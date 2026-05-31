@@ -1,6 +1,9 @@
 const router = require("express").Router();
-const { usernameVarmi, rolAdiGecerlimi } = require('./auth-middleware');
-const { JWT_SECRET } = require("../secrets"); // bu secret'ı kullanın!
+const { usernameVarmi, rolAdiGecerlimi } = require("./auth-middleware");
+const { JWT_SECRET, BCRYPT_ROUNDS } = require("../secrets"); // bu secret'ı kullanın!
+const Users = require("../users/users-model");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 
 router.post("/register", rolAdiGecerlimi, (req, res, next) => {
   /**
@@ -14,8 +17,17 @@ router.post("/register", rolAdiGecerlimi, (req, res, next) => {
       "role_name": "angel"
     }
    */
-});
+  let user = req.body;
+  const hash = bcrypt.hashSync(user.password, Number(BCRYPT_ROUNDS));
+  user.password = hash;
+  user.role_name = req.role_name;
 
+  Users.ekle(user)
+    .then((user) => {
+      res.status(201).json(user);
+    })
+    .catch(next);
+});
 
 router.post("/login", usernameVarmi, (req, res, next) => {
   /**
@@ -36,6 +48,27 @@ router.post("/login", usernameVarmi, (req, res, next) => {
       "role_name": "admin" // giriş yapan kulanıcının role adı
     }
    */
-});
+  let { username, password } = req.body;
 
+  if (bcrypt.compareSync(password, req.user.password)) {
+    const token = generatedToken(req.user);
+    res.status(200).json({
+      message: `${req.user.username} geri geldi!`,
+      token,
+    });
+  } else {
+    next({ status: 401, message: "Geçersiz kriter" });
+  }
+});
+function generatedToken(user) {
+  const payload = {
+    subject: user.user_id,
+    username: user.username,
+    role_name: user.role_name,
+  };
+  const options = {
+    expiresIn: "1 day",
+  };
+  return jwt.sign(payload, JWT_SECRET, options);
+}
 module.exports = router;
